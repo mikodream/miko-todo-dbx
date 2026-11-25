@@ -2127,13 +2127,16 @@
     bindEvents();
     document.title = "MIKO.TODO v" + BUILD;
     const api = window.dbxPlugin || null;
+    // ?locale=zh|en 只给本地预览和自测用（宿主加载入口时没有查询串），保证断言与截图可复现
+    let forcedLocale = "";
+    try { forcedLocale = new URLSearchParams(location.search).get("locale") || ""; } catch (e) { /* ignore */ }
     if (api) {
       try { await api.ready; } catch (e) { /* ready 失败也尽量把界面渲染出来 */ }
       applyTheme(api.theme || null);
-      applyLocale(api.locale || navigator.language || "zh");
+      applyLocale(forcedLocale || api.locale || navigator.language || "zh");
     } else {
       applyTheme(null);
-      applyLocale(navigator.language || "zh");
+      applyLocale(forcedLocale || navigator.language || "zh");
     }
     if (!api) {
       // 没有宿主（本地预览）：仍然跑起来，只是不落盘
