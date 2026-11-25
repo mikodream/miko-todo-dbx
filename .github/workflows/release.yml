@@ -1,0 +1,273 @@
+# 主分支更新 → 版本 Tag + GitHub Release（未签名审核候选包）
+#
+# 流程（对应官方文档「提交官方商店的完整流程 · 第一步」）：
+#   prepare  : 跑测试 → 读 manifest 版本 → 判断 Tag/Release 是否已发布
+#   release  : 建 draft Release（写 Release Notes、指向当前提交，Tag 在正式发布时落地）
+#   candidates: 调官方 reusable workflow（钉住 plugin-cli-v0.1.10）按平台构建
+#               未签名 .dbxp + 每个包的 .artifact.json + 汇总 release-candidates.json，
+#               并在上传前校验 sha256/size、拒绝已签名包、校验各平台 manifest 身份一致
+#   verify   : 校验资产齐全 → 把 draft 正式发布（非 draft / 非 prerelease，store 才会发现）
+#
+# 注意：用 GITHUB_TOKEN 创建的 Release 不会触发 `release: published` 工作流，
+# 所以这里在同一个工作流里直接调用 reusable workflow，而不是等事件。
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      plugin_id: ${{ steps.meta.outputs.plugin_id }}
+      plugin_name: ${{ steps.meta.outputs.plugin_name }}
+      backend: ${{ steps.meta.outputs.backend }}
+      matrix: ${{ steps.meta.outputs.matrix }}
+      permissions: ${{ steps.meta.outputs.permissions }}
+      proceed: ${{ steps.state.outputs.proceed }}
+      reason: ${{ steps.state.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Data layer tests
+        run: node dev/store.test.js
+
+      - name: UI self-test (headless Chrome)
+        run: bash dev/run-selftest.sh
+
+      - name: Resolve version, target matrix and plugin identity
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const out = process.env.GITHUB_OUTPUT;
+          const manifest = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+          const toml = fs.readFileSync("dbx-plugin.toml", "utf8");
+          const backendMatch = toml.match(/^\[backend\][\s\S]*?^language\s*=\s*"([^"]+)"/m);
+          const backend = backendMatch ? backendMatch[1] : "none";
+          // 纯前端插件只有一个跨平台候选包；带 Sidecar 的插件必须按 OS + CPU 架构分别构建
+          const matrix = backend === "none"
+            ? { include: [{ runner: "ubuntu-24.04", target: "universal" }] }
+            : { include: [
+                { runner: "ubuntu-24.04", target: "linux-x64" },
+                { runner: "ubuntu-24.04-arm", target: "linux-arm64" },
+                { runner: "windows-2022", target: "windows-x64" },
+                { runner: "macos-15-intel", target: "darwin-x64" },
+                { runner: "macos-15", target: "darwin-arm64" }
+              ] };
+          const lines = [
+            `version=${manifest.version}`,
+            `tag=v${manifest.version}`,
+            `plugin_id=${manifest.id}`,
+            `plugin_name=${manifest.name}`,
+            `backend=${backend}`,
+            `matrix=${JSON.stringify(matrix)}`,
+            `permissions=${(manifest.permissions || []).join(",") || "无"}`,
+            `publisher=${manifest.publisher}`
+          ];
+          fs.appendFileSync(out, lines.join("\n") + "\n");
+          NODE
+
+      - name: Check tag and release state
+        id: state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # 版本号没变就没有新 Tag 可打：跳过并告警，而不是硬覆盖已发布资产
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            if gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null | grep -qx 'true'; then
+              echo "proceed=true" >> "$GITHUB_OUTPUT"
+              echo "reason=Tag/Tag $TAG 已存在但 Release 仍是 draft，继续补全并正式发布" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=$TAG 已发布过，本次跳过；要发新版本请先提升 manifest.json 的 version" >> "$GITHUB_OUTPUT"
+            echo "::warning::Tag $TAG 已存在且 Release 已发布，跳过本次发布（请提升 manifest.json 版本号）"
+            exit 0
+          fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+          echo "reason=准备创建 $TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Announce skip
+        if: steps.state.outputs.proceed != 'true'
+        run: |
+          {
+            echo "## 已跳过发布"
+            echo
+            echo "${{ steps.state.outputs.reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Create draft release
+    needs: prepare
+    if: needs.prepare.outputs.proceed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Write release notes
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PLUGIN_ID: ${{ needs.prepare.outputs.plugin_id }}
+          PLUGIN_NAME: ${{ needs.prepare.outputs.plugin_name }}
+          PERMISSIONS: ${{ needs.prepare.outputs.permissions }}
+        run: |
+          set -euo pipefail
+          prev="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          if [ -n "${prev}" ] && [ "${prev}" != "${TAG}" ]; then
+            range="${prev}..HEAD"
+            compare="https://github.com/${GITHUB_REPOSITORY}/compare/${prev}...${TAG}"
+          else
+            range="HEAD"
+            compare=""
+          fi
+          {
+            echo "插件：\`${PLUGIN_ID}\`（${PLUGIN_NAME}）　版本：\`${VERSION}\`"
+            echo "源码 Tag：\`${TAG}\`　提交：\`${GITHUB_SHA:0:7}\`"
+            echo "权限：${PERMISSIONS}"
+            echo
+            echo "## 变更"
+            echo
+            git log "${range}" --no-merges --pretty=format:'- %s（%h）'
+            echo
+            if [ -n "${compare}" ]; then
+              echo
+              echo "完整对比：${compare}"
+            fi
+            echo
+            echo "## 候选包（未签名）"
+            echo
+            echo "| 资产 | 说明 |"
+            echo "| --- | --- |"
+            echo "| \`${PLUGIN_ID}-${VERSION}-<target>.dbxp\` | 未签名审核候选包，一个 target 一个 |"
+            echo "| \`*.artifact.json\` | 与字节绑定的元数据：target / url / sha256 / size |"
+            echo "| \`release-candidates.json\` | 汇总清单（身份 + 各 target 的 SHA-256 与大小） |"
+            echo
+            echo "安装候选包：DBX → 插件中心 → 打开「允许安装未签名开发包」→ 选择对应平台的 \`.dbxp\`。"
+            echo "商店安装不做这个放宽，官方签名由 DBX Store 维护者在审核后完成。"
+            echo
+            echo "## 上架流程"
+            echo
+            echo "1. 本 Release 发布后，\`t8y2/dbx-store\` 的同步 Workflow 会读取 \`release-candidates.json\`，创建/更新唯一的 \`candidates/${PLUGIN_ID}.json\` 候选 PR；"
+            echo "2. DBX Store 维护者审核源码、Manifest、权限与候选 SHA-256 后签名；"
+            echo "3. 签名结果回写同一 PR，校验通过后合并。"
+            echo
+            echo "> 已发布的 Release 资产不可覆盖：任何字节变化都必须提升 \`manifest.json\` 的版本号并重新走本流程。"
+          } > notes.md
+          cat notes.md
+
+      - name: Create or update draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "MIKO.TODO $VERSION" --notes-file notes.md
+          else
+            gh release create "$TAG" \
+              --draft \
+              --target "$GITHUB_SHA" \
+              --title "MIKO.TODO $VERSION" \
+              --notes-file notes.md
+          fi
+
+  candidates:
+    name: Build and upload candidates
+    needs: [prepare, release]
+    if: needs.prepare.outputs.proceed == 'true'
+    permissions:
+      contents: write
+    uses: t8y2/dbx/.github/workflows/plugin-release-reusable.yml@plugin-cli-v0.1.10
+    with:
+      release-tag: ${{ needs.prepare.outputs.tag }}
+      # ${DBX_PLUGIN_TARGET} 由 reusable workflow 的 build job 注入，按 target 生成下载地址
+      package-command: >-
+        dbx-plugin package . --output-dir dist --artifact-url
+        https://github.com/${{ github.repository }}/releases/download/${{ needs.prepare.outputs.tag }}/${{ needs.prepare.outputs.plugin_id }}-${{ needs.prepare.outputs.version }}-${DBX_PLUGIN_TARGET}.dbxp
+      build-matrix: ${{ needs.prepare.outputs.matrix }}
+      plugin-cli-version: "0.1.10"
+      go-version: ${{ needs.prepare.outputs.backend == 'go' && '1.22.x' || '' }}
+      rust-toolchain: ${{ needs.prepare.outputs.backend == 'rust' && 'stable' || '' }}
+
+  verify:
+    name: Verify assets and publish
+    needs: [prepare, candidates]
+    if: needs.prepare.outputs.proceed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json assets --jq '.assets[].name' | sort > assets.txt
+          echo "Release 资产："
+          cat assets.txt
+          grep -q '\.dbxp$' assets.txt || { echo "::error::缺少 .dbxp 候选包"; exit 1; }
+          grep -q '\.artifact\.json$' assets.txt || { echo "::error::缺少 .artifact.json"; exit 1; }
+          grep -qx 'release-candidates.json' assets.txt || { echo "::error::缺少 release-candidates.json"; exit 1; }
+          pkgs=$(grep -c '\.dbxp$' assets.txt)
+          arts=$(grep -c '\.artifact\.json$' assets.txt)
+          if [ "$pkgs" != "$arts" ]; then
+            echo "::error::候选包数量 $pkgs 与 artifact.json 数量 $arts 不一致"
+            exit 1
+          fi
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          # 正式发布（非 draft / 非 prerelease），dbx-store 只识别这种 Release
+          gh release edit "$TAG" --draft=false --latest
+          {
+            echo "## 已发布 MIKO.TODO $VERSION"
+            echo
+            echo "- Tag：\`${TAG}\`"
+            echo "- Release：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+            echo
+            echo "资产："
+            echo '```'
+            cat assets.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

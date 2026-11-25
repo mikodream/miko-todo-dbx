@@ -1,4 +1,6 @@
 /dist/
 /.dbx-dev/
+notes.md
+/release-assets/
 .DS_Store
 *.log

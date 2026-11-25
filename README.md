@@ -69,6 +69,7 @@ python3 -m http.server 5399
 - `dev/selftest.html`：在 iframe 里点真实按钮跑 90 条断言（建任务、卡片展开、子任务新增/排序/进度/用时、勾子任务、重复派生、日历、搜索、分组、重命名/删除、自定义重复、导出）。
 - `dev/layout.html`：量布局（是否横向溢出、侧栏/主区宽度、日历格子一致性、详情面板尺寸）。
 - `dev/store.test.js`：纯数据层断言（日期推进、月末/闰年、重复规则、进度、派生）。`node dev/store.test.js`
+- `dev/run-selftest.sh`：一条命令跑完「起服务 → 无头 Chrome → 断言汇总」，CI 用的就是它（`dev/parse-selftest.py` 负责解析）
 
 `node --headless` 跑自测的命令：
 
@@ -86,6 +87,26 @@ dbx-plugin package .                                                   # → dis
 ```
 
 包内只含 `assets/` 与 `ui/`（见 `dbx-plugin.toml` 的 `[package] include`），`dev/` 不会被打进去。
+## 发版（GitHub Actions）
+
+`.github/workflows/release.yml` 会在**主分支每次推送**时跑一遍测试，并按 `manifest.json` 的 `version` 发版（对应官方文档「提交官方商店的完整流程 · 第一步」）。
+
+| 步骤 | 做什么 |
+| --- | --- |
+| `prepare` | 数据层断言 + 无头 Chrome 界面断言 → 解析 `manifest.json` / `dbx-plugin.toml` → 判断 `v<version>` 是否已发布 |
+| `release` | 建 **draft** Release，自动写 Release Notes（变更、资产说明、安装方式、上架流程）并指向当前提交 |
+| `candidates` | 调官方 `t8y2/dbx/.github/workflows/plugin-release-reusable.yml@plugin-cli-v0.1.10`，按平台构建未签名候选包，上传前校验 SHA-256／大小、拒绝已签名包、校验各平台 manifest 身份一致 |
+| `verify` | 确认资产齐全（`.dbxp` 数 == `.artifact.json` 数，且含 `release-candidates.json`）后把 draft 正式发布 |
+
+Release 资产：
+
+- `miko.todo.tasks-<version>-<target>.dbxp`：每个平台的**未签名**候选包。纯前端插件只有 `universal`；一旦 `dbx-plugin.toml` 出现 `[backend]`，矩阵自动切成 `linux-x64` / `linux-arm64` / `windows-x64` / `darwin-x64` / `darwin-arm64`；
+- 与包同名的 `.artifact.json`：`target` / `url` / `sha256` / `size`，绑定确切字节；
+- `release-candidates.json`：汇总清单，`dbx-store` 的同步 Workflow 读它生成候选 PR；
+- Release Notes 与源码 Tag `v<version>`。
+
+发新版本：改 `manifest.json` 的 `version` → 提交 → 推 `main`。**版本号没变时工作流会跳过并告警**——已发布的 Release 资产不可覆盖，字节一变就必须升版本重走流程。也可以手动 `workflow_dispatch` 重跑，用于补全失败中断时留下的 draft。
+
 
 `menus.items[].group` 只接受宿主词表 `navigation` / `primary` / `secondary` / `destructive`（写 `plugins` 会被判为不兼容）。
 
