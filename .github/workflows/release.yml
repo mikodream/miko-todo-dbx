@@ -99,7 +99,7 @@ jobs:
           set -euo pipefail
           # 版本号没变就没有新 Tag 可打：跳过并告警，而不是硬覆盖已发布资产
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            if gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null | grep -qx 'true'; then
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null | grep -qx 'true'; then
               echo "proceed=true" >> "$GITHUB_OUTPUT"
               echo "reason=Tag/Tag $TAG 已存在但 Release 仍是 draft，继续补全并正式发布" >> "$GITHUB_OUTPUT"
               exit 0
@@ -230,6 +230,29 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Download built candidates
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dbx-plugin-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Upload per-candidate artifact metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # 官方 reusable workflow 只传 .dbxp 与 release-candidates.json，
+          # 这里把每个候选包的 .artifact.json 一并附上（target / url / sha256 / size）。
+          mapfile -d '' metas < <(find release-assets -type f -name '*.artifact.json' -print0)
+          if [ "${#metas[@]}" -eq 0 ]; then
+            echo "::error::没有找到任何 .artifact.json"
+            exit 1
+          fi
+          gh release upload "$TAG" "${metas[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+
       - name: Check release assets
         shell: bash
         env:
@@ -237,7 +260,7 @@ jobs:
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
-          gh release view "$TAG" --json assets --jq '.assets[].name' | sort > assets.txt
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort > assets.txt
           echo "Release 资产："
           cat assets.txt
           grep -q '\.dbxp$' assets.txt || { echo "::error::缺少 .dbxp 候选包"; exit 1; }
@@ -259,7 +282,7 @@ jobs:
         run: |
           set -euo pipefail
           # 正式发布（非 draft / 非 prerelease），dbx-store 只识别这种 Release
-          gh release edit "$TAG" --draft=false --latest
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           {
             echo "## 已发布 MIKO.TODO $VERSION"
             echo
