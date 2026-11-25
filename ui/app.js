@@ -5,7 +5,7 @@
   "use strict";
 
   const T = window.MikoTodoStore;
-  const BUILD = "0.1.0";   // 与 manifest.json 的 version 同步，方便确认装的是哪一版
+  const BUILD = "0.1.1";   // 与 manifest.json 的 version 同步，方便确认装的是哪一版
 
   /* ── 文案 ─────────────────────────────────────────── */
   const I18N = {

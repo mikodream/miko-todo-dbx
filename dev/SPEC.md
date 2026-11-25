@@ -1,6 +1,6 @@
 # MIKO.TODO 待办 —— 实现契约
 
-插件 id `miko.todo.tasks`，版本 `0.1.0`。本文件是数据层（`ui/store.js`）与界面层（`ui/app.js`）之间、
+插件 id `miko.todo.tasks`，版本 `0.1.1`。本文件是数据层（`ui/store.js`）与界面层（`ui/app.js`）之间、
 以及本插件与 DBX 宿主之间的约定。任何一方要偏离，先改本文件再改代码。
 
 ## 0. 平台事实（不要推翻）

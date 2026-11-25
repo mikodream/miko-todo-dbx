@@ -3,7 +3,7 @@
   "manifest_version": 1,
   "id": "miko.todo.tasks",
   "name": "MIKO.TODO 待办",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "miko",
   "description": "分组管理待办：优先级、起止时间、子任务与里程碑、完成度进度条，列表与日历双视图，任务可设为不重复/每天/每周/每月/每年/自定义重复。",
   "icon": "assets/plugin.svg",

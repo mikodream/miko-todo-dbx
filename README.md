@@ -3,7 +3,7 @@
 DBX 里的待办工作台：**分组 + 优先级 + 起止时间 + 子任务/里程碑 + 进度条 + 列表/日历双视图 + 重复任务**。
 纯前端插件（沙箱 UI + `host.storage`），没有原生 Sidecar，不需要编译产物以外的任何依赖。
 
-- 插件 id：`miko.todo.tasks`　版本：`0.1.0`　作者：`miko`
+- 插件 id：`miko.todo.tasks`　版本：`0.1.1`　作者：`miko`　协议：MIT
 - 仓库：https://github.com/mikodream/miko-todo-dbx
 - 入口：工作台 `miko.todo.tasks.workbench`、命令「打开待办」（命令面板 + 顶部工具栏）
 - 权限：`host.storage`（任务与偏好）、`host.workbench`（改标签标题）
@@ -104,6 +104,17 @@ Release 资产：
 - 与包同名的 `.artifact.json`：`target` / `url` / `sha256` / `size`，绑定确切字节；
 - `release-candidates.json`：汇总清单，`dbx-store` 的同步 Workflow 读它生成候选 PR；
 - Release Notes 与源码 Tag `v<version>`。
+
+### 商店元数据 `.dbx-store.json`
+
+`dbx-store` 的同步脚本会按 **源码 Tag** 去取仓库根目录的 `.dbx-store.json`（默认路径，可通过 `automation/plugin-sources.json` 的 `metadataPath` 覆盖）。
+它不是运行时 manifest，字段白名单只有：`name`、`description`、`icon`、`tags`、`permissions`、`source`、`homepage`、`license`、`releaseNotes`、`localizations`；`autoUpdate` 不在这里（那是 `dbx-store` 的注册字段，需要向 `t8y2/dbx-store` 提 PR 改 `automation/plugin-sources.json`）。
+
+- **首次上架时 `name` 与 `license` 是必填**：`sync-release-candidate.mjs` 会直接拒绝缺这两项的插件；
+- `icon` 写包内相对路径（如 `assets/plugin.svg`），同步时自动转成该 Tag 下的 raw.githubusercontent 地址；
+- 文件必须存在于**被打 Tag 的那次提交**里，否则同步读不到。所以新增/修改它时要连带升版本、重新发版。
+
+> `LICENSE`（MIT）与该文件同源：商店展示的协议以 `license` 字段为准。
 
 发新版本：改 `manifest.json` 的 `version` → 提交 → 推 `main`。**版本号没变时工作流会跳过并告警**——已发布的 Release 资产不可覆盖，字节一变就必须升版本重走流程。也可以手动 `workflow_dispatch` 重跑，用于补全失败中断时留下的 draft。
 
