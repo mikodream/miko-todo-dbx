@@ -1,0 +1,68 @@
+{
+  "$schema": "https://raw.githubusercontent.com/t8y2/dbx/main/plugins/manifest.schema.json",
+  "manifest_version": 1,
+  "id": "miko.todo.tasks",
+  "name": "MIKO.TODO 待办",
+  "version": "0.1.0",
+  "publisher": "miko",
+  "description": "分组管理待办：优先级、起止时间、子任务与里程碑、完成度进度条，列表与日历双视图，任务可设为不重复/每天/每周/每月/每年/自定义重复。",
+  "icon": "assets/plugin.svg",
+  "source": "https://github.com/mikodream/miko-todo-dbx",
+  "engines": { "dbx": ">=0.6.0", "host_api": "1" },
+  "permissions": ["host.storage", "host.workbench"],
+  "entrypoints": {
+    "ui": {
+      "root": "ui",
+      "entry": "ui/index.html"
+    }
+  },
+  "contributions": [
+    {
+      "type": "workbench",
+      "id": "miko.todo.tasks.workbench",
+      "label": "MIKO.TODO 待办",
+      "description": "分组任务、优先级、子任务与里程碑、进度条、列表与日历双视图、重复任务。",
+      "icon": "assets/plugin.svg"
+    },
+    {
+      "type": "command",
+      "id": "miko.todo.tasks.open",
+      "label": "打开待办",
+      "icon": "assets/plugin.svg",
+      "action": {
+        "type": "open-workbench",
+        "workbench": "miko.todo.tasks.workbench",
+        "presentation": "tab",
+        "context": {}
+      }
+    },
+    {
+      "type": "menus",
+      "id": "miko.todo.tasks.menus",
+      "items": [
+        { "location": "commandPalette", "command": "miko.todo.tasks.open", "group": "navigation", "order": 10 },
+        { "location": "appToolbar", "command": "miko.todo.tasks.open", "group": "primary", "order": 30, "default_visible": true }
+      ]
+    }
+  ],
+  "localizations": {
+    "en": {
+      "name": "MIKO.TODO Tasks",
+      "description": "Grouped todos with priority, start and due dates, subtasks and milestones, progress bars, list and calendar views, and repeat rules for daily, weekly, monthly, yearly or custom schedules.",
+      "contributions": {
+        "miko.todo.tasks.workbench": {
+          "label": "MIKO.TODO Tasks",
+          "description": "Task groups, priority, subtasks and milestones, progress bars, list and calendar views, repeating tasks."
+        },
+        "miko.todo.tasks.open": { "label": "Open tasks" }
+      }
+    },
+    "zh-CN": {
+      "name": "MIKO.TODO 待办",
+      "description": "分组管理待办：优先级、起止时间、子任务与里程碑、完成度进度条，列表与日历双视图，任务可设为不重复/每天/每周/每月/每年/自定义重复。",
+      "contributions": {
+        "miko.todo.tasks.open": { "label": "打开待办" }
+      }
+    }
+  }
+}

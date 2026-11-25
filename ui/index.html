@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh" data-dbx-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIKO.TODO 待办</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="boot" class="boot"><div class="spinner"></div></div>
+
+<div id="shell" class="shell" hidden>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-name">MIKO.TODO</span>
+      <span id="brand-stats" class="brand-stats"></span>
+    </div>
+    <div class="search-wrap">
+      <input id="search" class="search" type="search" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="tools">
+      <div class="seg" role="group">
+        <button class="seg-btn" type="button" data-view="list"></button>
+        <button class="seg-btn" type="button" data-view="calendar"></button>
+      </div>
+      <button id="btn-show-done" class="btn btn-toggle" type="button" aria-pressed="false"></button>
+      <button id="btn-data" class="btn" type="button"></button>
+      <button id="btn-new" class="btn btn-primary" type="button"></button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden>
+    <span id="banner-text"></span>
+  </div>
+
+  <main class="workspace">
+    <aside class="pane pane-side">
+      <div class="side-scroll scroll">
+        <section class="side-section">
+          <h3 class="side-title" data-i18n="smartLists"></h3>
+          <div id="smart" class="smart-list"></div>
+        </section>
+        <section class="side-section">
+          <h3 class="side-title">
+            <span data-i18n="groupsTitle"></span>
+            <button id="btn-add-group" class="icon-btn" type="button" data-i18n-title="addGroup">＋</button>
+          </h3>
+          <div id="groups" class="group-list"></div>
+        </section>
+      </div>
+      <footer class="side-foot">
+        <div class="foot-line">
+          <span data-i18n="overall"></span>
+          <span id="overall-pct" class="foot-pct"></span>
+        </div>
+        <div class="bar bar-lg"><i id="overall-bar"></i></div>
+        <div id="overall-meta" class="foot-meta"></div>
+      </footer>
+    </aside>
+
+    <section class="pane pane-main">
+      <div id="list-view" class="list-scroll scroll"></div>
+      <div id="calendar-view" class="calendar" hidden>
+        <header class="cal-head">
+          <div class="cal-nav">
+            <button id="cal-prev" class="icon-btn" type="button">‹</button>
+            <button id="cal-today" class="btn btn-small" type="button" data-i18n="calToday"></button>
+            <button id="cal-next" class="icon-btn" type="button">›</button>
+          </div>
+          <span id="cal-title" class="cal-title"></span>
+          <span id="cal-meta" class="cal-meta"></span>
+        </header>
+        <div id="cal-weekdays" class="cal-weekdays"></div>
+        <div id="cal-grid" class="cal-grid"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="fatal" class="fatal" hidden>
+  <div class="fatal-card">
+    <h2 id="fatal-title"></h2>
+    <p id="fatal-body"></p>
+  </div>
+</div>
+
+<div id="modal-root" class="modal-root" hidden></div>
+<div id="dialog-root" class="dialog-root" hidden></div>
+<div id="menu-root" class="menu-root" hidden></div>
+<div id="toasts" class="toasts"></div>
+
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

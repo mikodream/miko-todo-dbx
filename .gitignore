@@ -1,0 +1,4 @@
+/dist/
+/.dbx-dev/
+.DS_Store
+*.log

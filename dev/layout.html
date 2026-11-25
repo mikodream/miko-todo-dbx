@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><title>MIKO.TODO layout check</title>
+<style>body{font:12px/1.5 ui-monospace,Menlo,monospace;margin:10px}#out{white-space:pre-wrap}iframe{border:1px solid #ccc;display:block}</style>
+</head>
+<body>
+<div id="out">running…</div>
+<iframe id="frame"></iframe>
+<script>
+(function () {
+  const q = new URLSearchParams(location.search);
+  const frame = document.getElementById("frame");
+  const out = document.getElementById("out");
+  const lines = [];
+  const say = (s) => { lines.push(s); out.textContent = lines.join("\n"); };
+  frame.style.width = Math.max(360, window.innerWidth - 20) + "px";
+  frame.style.height = Math.max(360, window.innerHeight - 90) + "px";
+  frame.src = "preview.html?theme=" + (q.get("theme") || "light") + "&view=" + (q.get("view") || "list") + "&locale=" + (q.get("locale") || "zh")
+    + (q.get("breakheight") ? "&breakheight=1" : "")
+    + (q.get("hostile") ? "&hostile=" + q.get("hostile") : "");
+  frame.addEventListener("load", async () => {
+    const win = frame.contentWindow, doc = frame.contentDocument;
+    const errors = [];
+    win.addEventListener("error", (e) => errors.push(e.message));
+    await new Promise((r) => setTimeout(r, 900));
+    const $ = (s) => doc.querySelector(s), $$ = (s) => Array.from(doc.querySelectorAll(s));
+    const rect = (n) => { if (!n) return null; const r = n.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left), y: Math.round(r.top) }; };
+    const cs = (n, p) => (n ? win.getComputedStyle(n).getPropertyValue(p) : null);
+
+    say("viewport " + win.innerWidth + "x" + win.innerHeight);
+    say("doc scrollWidth " + doc.documentElement.scrollWidth + " (无横向溢出=" + (doc.documentElement.scrollWidth <= win.innerWidth) + ")");
+    say("body bg=" + cs(doc.body, "background-color") + " fg=" + cs(doc.body, "color") + " theme=" + doc.documentElement.dataset.dbxTheme);
+    say("css rules=" + (doc.styleSheets[0] ? doc.styleSheets[0].cssRules.length : "n/a"));
+    const shellRect = rect($("#shell"));
+    say("shell=" + JSON.stringify(shellRect) + " 占满视口=" + (shellRect.h === win.innerHeight && shellRect.w === win.innerWidth) + " 无纵向滚动=" + (doc.documentElement.scrollHeight <= win.innerHeight + 1));
+    const sideR = rect($(".pane-side"));
+    const footR = rect($(".side-foot"));
+    say("side=" + JSON.stringify(sideR) + " main=" + JSON.stringify(rect($(".pane-main"))));
+    say("侧栏贴底=" + (sideR && Math.abs(sideR.y + sideR.h - win.innerHeight) <= 2) + " 完成度贴底=" + (footR && Math.abs(footR.y + footR.h - win.innerHeight) <= 2));
+    say("groups=" + $$("#groups .group-item").length + " smart=" + $$("#smart .smart-item").length);
+    say("tasks=" + $$(".task").length + " firstTask=" + JSON.stringify(rect($(".task"))));
+    const titleEl = $(".task-title");
+    say("title color=" + cs(titleEl, "color") + " overflow=" + (titleEl ? titleEl.scrollWidth > titleEl.clientWidth : "n/a"));
+    const bar = $(".task-progress .bar");
+    say("progress bar=" + JSON.stringify(rect(bar)) + " fill=" + (bar ? Math.round(bar.firstElementChild.getBoundingClientRect().width) : "n/a"));
+    const cells = $$("#cal-grid .cal-cell").map(rect);
+    const widths = Array.from(new Set(cells.map((c) => c.w)));
+    const heights = Array.from(new Set(cells.map((c) => c.h)));
+    say("cal cells=" + cells.length + " widths=" + JSON.stringify(widths) + " heights=" + JSON.stringify(heights) + " grid=" + JSON.stringify(rect($("#cal-grid"))));
+    const chips = $$(".cal-chip").map(rect).filter(Boolean);
+    say("cal chips=" + chips.length + " maxChipW=" + (chips.length ? Math.max.apply(null, chips.map((c) => c.w)) : 0));
+
+    // 打开详情面板量一量
+    // 先点卡片展开，再量展开后的卡片是否溢出
+    const cardTitle = $(".task-title");
+    if (cardTitle) {
+      cardTitle.click();
+      await new Promise((r) => setTimeout(r, 200));
+      const body = $(".task-body");
+      say("expandedCard=" + JSON.stringify(rect(body)) + " 卡片溢出=" + ($(".task") ? $(".task").scrollWidth > $(".task").clientWidth : "n/a") + " 子任务行=" + $$(".sub-row").length);
+    }
+    const firstOpen = $("[data-act='edit']") || $(".cal-chip[data-tid]");
+    if (firstOpen) {
+      firstOpen.click();
+      await new Promise((r) => setTimeout(r, 250));
+      say("sheet=" + JSON.stringify(rect($(".sheet"))) + " bodyScroll=" + ($(".sheet-body") ? $(".sheet-body").scrollHeight + "/" + $(".sheet-body").clientHeight : "n/a"));
+      say("sheet fields=" + $$(".sheet .field").length + " progressCard=" + !!$(".progress-card") + " pct=" + ($(".pc-pct") ? $(".pc-pct").textContent : "n/a"));
+      say("sheet hOverflow=" + ($(".sheet") ? $(".sheet").scrollWidth > $(".sheet").clientWidth : "n/a"));
+      $(".sheet-foot .btn-primary").click();
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    say("errors=" + JSON.stringify(errors));
+    document.title = "LAYOUT " + (q.get("theme") || "light") + "/" + (q.get("view") || "list") + " done";
+  });
+})();
+</script>
+</body>
+</html>

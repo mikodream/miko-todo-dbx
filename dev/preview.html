@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>MIKO.TODO preview</title>
+<link rel="stylesheet" href="../ui/style.css">
+<style>html, body { height: 100%; margin: 0; }</style>
+</head>
+<body>
+<script>
+/* 仅用于截图/本地预览：伪造出 DBX 宿主的最小面（storage + theme + locale），
+ * 然后把真实的 ui/index.html 主体搬进来，跑真的 app.js。 */
+(function () {
+  const q = new URLSearchParams(location.search);
+  const locale = q.get("locale") || "zh";
+  const appearance = q.get("theme") || "light";
+  const view = q.get("view") || "list";
+
+  const day = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  };
+
+  const groups = [
+    { id: "g1", name: "工作", color: "#6366f1", collapsed: false, order: 0 },
+    { id: "g2", name: "生活", color: "#22c55e", collapsed: false, order: 1 },
+    { id: "g3", name: "学习", color: "#f59e0b", collapsed: false, order: 2 }
+  ];
+
+  const task = (over) => Object.assign({
+    id: "t" + Math.random().toString(36).slice(2, 8), groupId: "g1", title: "", notes: "",
+    priority: "none", startDate: null, startTime: "09:00", dueDate: null, dueTime: "18:00",
+    allDay: true, done: false, completedAt: null, progress: 0, subtasks: [], milestones: [],
+    repeat: null, seriesId: null, occurrence: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  }, over);
+
+  const tasks = [
+    task({ groupId: "g1", title: "整理第四季度 OKR 复盘", priority: "urgent", startDate: day(-2), dueDate: day(1),
+      subtasks: [{ id: "s1", title: "拉取各线数据", done: true }, { id: "s2", title: "写差距分析", done: true }, { id: "s3", title: "定下季度目标", done: false }],
+      milestones: [{ id: "m1", title: "评审会", date: day(1), done: false }],
+      notes: "先把数据口径对齐，别再出现两套数字。" }),
+    task({ groupId: "g1", title: "每周同步会", priority: "medium", startDate: day(0), dueDate: day(0),
+      repeat: { freq: "weekly", unit: "week", interval: 1, weekdays: [3], until: null, count: null, doneCount: 3 },
+      subtasks: [{ id: "s4", title: "整理议题", done: true }, { id: "s5", title: "同步阻塞项", done: false }] }),
+    task({ groupId: "g1", title: "上线 DBX 插件商店页", priority: "high", startDate: day(3), dueDate: day(9),
+      milestones: [{ id: "m2", title: "灰度发布", date: day(6), done: false }, { id: "m3", title: "全量", date: day(9), done: false }] }),
+    task({ groupId: "g1", title: "回复客户安全问卷", priority: "low", dueDate: day(-3) }),
+    task({ groupId: "g2", title: "预约牙医", priority: "medium", dueDate: day(2) }),
+    task({ groupId: "g2", title: "把阳台的灯换成暖光", priority: "none", dueDate: day(5), progress: 40 }),
+    task({ groupId: "g2", title: "跑 5 公里", priority: "low", startDate: day(0), dueDate: day(0), done: true, completedAt: new Date().toISOString(), progress: 100 }),
+    task({ groupId: "g3", title: "读完《数据库系统概念》第 6 章", priority: "medium", startDate: day(-6), dueDate: day(12),
+      subtasks: [{ id: "s6", title: "索引结构", done: true }, { id: "s7", title: "查询优化", done: false }, { id: "s8", title: "事务", done: false }] }),
+    task({ groupId: "g3", title: "写一篇 SQLite WAL 的笔记", priority: "low", dueDate: day(8) }),
+    task({ groupId: "g3", title: "每月复盘学习计划", priority: "none", dueDate: day(20),
+      repeat: { freq: "monthly", unit: "month", interval: 1, weekdays: [], until: null, count: null, doneCount: 1 } })
+  ];
+
+  const mem = new Map();
+  mem.set("meta", JSON.stringify({ version: 1, groups, prefs: { view, showDone: false, weekMonday: true, scope: { kind: "all", gid: null } } }));
+  groups.forEach((g) => mem.set("tasks." + g.id, JSON.stringify(tasks.filter((t) => t.groupId === g.id))));
+
+  window.dbxPlugin = {
+    ready: Promise.resolve(),
+    locale,
+    theme: { appearance, tokens: {} },
+    capabilities: { storage: true, workbenchTitle: true },
+    storage: {
+      get: (k) => Promise.resolve(mem.has(k) ? JSON.parse(mem.get(k)) : null),
+      set: (k, v) => { mem.set(k, JSON.stringify(v)); return Promise.resolve(); },
+      delete: (k) => { mem.delete(k); return Promise.resolve(); }
+    },
+    context: {},
+    setTitle() {},
+    onContext() {},
+    copy: () => Promise.resolve()
+  };
+
+  if (q.get("hostile") === "2") {
+    const st = document.createElement("style");
+    st.textContent = "html, body { height: auto !important; } " +
+      ".shell { position: static !important; display: block !important; height: auto !important; min-height: 0 !important; } " +
+      ".workspace { display: block !important; height: auto !important; } " +
+      ".pane-side, .pane-main { display: block !important; height: auto !important; } " +
+      ".side-scroll { height: auto !important; } .list-scroll { height: auto !important; }";
+    document.head.appendChild(st);
+  }
+  if (q.get("hostile") === "1") {
+    const st = document.createElement("style");
+    st.textContent = "html, body { height: auto !important; } " +
+      ".shell { position: static !important; height: auto !important; min-height: 0 !important; " +
+      "top: auto !important; bottom: auto !important; left: auto !important; right: auto !important; }";
+    document.head.appendChild(st);
+  }
+  if (q.get("breakheight")) {
+    const st = document.createElement("style");
+    st.textContent = "html, body { height: auto !important; }";
+    document.head.appendChild(st);
+  }
+
+  fetch("../ui/index.html").then((r) => r.text()).then((html) => {
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    const scripts = Array.from(parsed.querySelectorAll("script[src]")).map((s) => s.getAttribute("src"));
+    Array.from(parsed.body.children).forEach((node) => {
+      if (node.tagName === "SCRIPT") return;
+      document.body.appendChild(document.importNode(node, true));
+    });
+    const load = (src) => new Promise((res) => {
+      const s = document.createElement("script");
+      s.src = "../ui/" + src;
+      s.onload = res;
+      document.body.appendChild(s);
+    });
+    (async () => { for (const src of scripts) await load(src); })();
+  });
+})();
+</script>
+</body>
+</html>
